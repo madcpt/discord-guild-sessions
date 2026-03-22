@@ -59,21 +59,24 @@ if (!TOKEN) {
   process.exit(1)
 }
 const INBOX_DIR = join(STATE_DIR, 'inbox')
-const SESSION_ID_FILE = join(STATE_DIR, 'session_id')
+const SESSION_CHANNEL_FILE = join(STATE_DIR, 'session_channel_id')
 
 // Session channel — auto-created in the guild when DISCORD_GUILD_ID is set.
-// null until the gateway connects and ensureSessionChannel() resolves.
+// null until the gateway connects and restoreSessionChannel()/ensureSessionChannel() resolves.
 let sessionChannelId: string | null = null
 
-function getSessionId(): string {
+function loadPersistedChannelId(): string | null {
   try {
-    return readFileSync(SESSION_ID_FILE, 'utf8').trim()
+    const id = readFileSync(SESSION_CHANNEL_FILE, 'utf8').trim()
+    return id || null
   } catch {
-    const id = randomBytes(4).toString('hex')
-    mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
-    writeFileSync(SESSION_ID_FILE, id, { mode: 0o600 })
-    return id
+    return null
   }
+}
+
+function persistChannelId(channelId: string): void {
+  mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
+  writeFileSync(SESSION_CHANNEL_FILE, channelId, { mode: 0o600 })
 }
 
 /** Derive channel name suggestions from the project directory. */
@@ -108,7 +111,6 @@ function suggestChannelNames(): string[] {
   const suggestions: string[] = []
   if (base) suggestions.push(`claude-${base}`)
   if (base) suggestions.push(base)
-  suggestions.push(`claude-session-${getSessionId()}`)
   // Deduplicate while preserving order
   return [...new Set(suggestions)]
 }
@@ -148,15 +150,35 @@ async function ensureSessionChannel(channelName: string): Promise<string | null>
   return created.id
 }
 
-/** Auto-register the session channel in access groups so the gate allows it. */
+/** Auto-register the session channel in access groups so the gate allows it, and persist the ID. */
 function registerSessionChannel(channelId: string): void {
   sessionChannelId = channelId
+  persistChannelId(channelId)
   const access = loadAccess()
   if (!(channelId in access.groups)) {
     access.groups[channelId] = { requireMention: false, allowFrom: [] }
     saveAccess(access)
     process.stderr.write(`discord channel: auto-registered session channel in access groups\n`)
   }
+}
+
+/** Try to restore the session channel from the persisted ID. Returns true if successful. */
+async function restoreSessionChannel(): Promise<boolean> {
+  const id = loadPersistedChannelId()
+  if (!id || !GUILD_ID) return false
+  try {
+    const guild = await client.guilds.fetch(GUILD_ID)
+    const ch = await guild.channels.fetch(id)
+    if (ch && ch.type === ChannelType.GuildText) {
+      process.stderr.write(`discord channel: restored session channel #${ch.name} (${id})\n`)
+      registerSessionChannel(id)
+      needsSessionChannelSetup = false
+      return true
+    }
+  } catch {
+    process.stderr.write(`discord channel: persisted channel ${id} no longer exists, clearing\n`)
+  }
+  return false
 }
 
 // Last-resort safety net — without these the process dies silently on any
@@ -885,32 +907,37 @@ function debugLog(msg: string): void {
 client.once('ready', c => {
   debugLog(`gateway connected as ${c.user.tag}`)
   debugLog(`GUILD_ID=${GUILD_ID ?? '(not set)'}`)
-  if (GUILD_ID && SESSION_CHANNEL_NAME) {
-    // Explicit name configured — create/reuse immediately.
-    debugLog(`ensuring session channel "${SESSION_CHANNEL_NAME}"...`)
-    ensureSessionChannel(SESSION_CHANNEL_NAME)
-      .then(id => debugLog(`session channel result: ${id}`))
-      .catch(err => debugLog(`failed to create session channel: ${err}`))
-  } else if (GUILD_ID) {
-    // No explicit name — notify Claude to ask the user to pick one.
-    needsSessionChannelSetup = true
-    const names = suggestChannelNames()
-    debugLog(`session channel setup pending — waiting for setup_session_channel tool call`)
-    debugLog(`suggested names: ${names.join(', ')}`)
-    // Send a channel notification so Claude proactively asks the user.
-    mcp.notification({
-      method: 'notifications/claude/channel',
-      params: {
-        content: `Discord session channel needs setup. Ask the user to pick a channel name, then call setup_session_channel. Suggestions:\n${names.map((n, i) => `  ${i + 1}. ${n}`).join('\n')}\nThe user can also type a custom name.`,
-        meta: {
-          source: 'discord',
-          type: 'session_setup',
-        },
-      },
-    }).catch(err => debugLog(`failed to send session setup notification: ${err}`))
-  } else {
+  if (!GUILD_ID) {
     debugLog(`no DISCORD_GUILD_ID set, skipping session channel`)
+    return
   }
+  // Try to restore from persisted channel ID first.
+  restoreSessionChannel().then(restored => {
+    if (restored) return
+    if (SESSION_CHANNEL_NAME) {
+      // Explicit name configured — create/reuse immediately.
+      debugLog(`ensuring session channel "${SESSION_CHANNEL_NAME}"...`)
+      ensureSessionChannel(SESSION_CHANNEL_NAME)
+        .then(id => debugLog(`session channel result: ${id}`))
+        .catch(err => debugLog(`failed to create session channel: ${err}`))
+    } else {
+      // No persisted channel, no explicit name — ask the user to pick one.
+      needsSessionChannelSetup = true
+      const names = suggestChannelNames()
+      debugLog(`session channel setup pending — waiting for setup_session_channel tool call`)
+      debugLog(`suggested names: ${names.join(', ')}`)
+      mcp.notification({
+        method: 'notifications/claude/channel',
+        params: {
+          content: `Discord session channel needs setup. Ask the user to pick a channel name, then call setup_session_channel. Suggestions:\n${names.map((n, i) => `  ${i + 1}. ${n}`).join('\n')}\nThe user can also type a custom name.`,
+          meta: {
+            source: 'discord',
+            type: 'session_setup',
+          },
+        },
+      }).catch(err => debugLog(`failed to send session setup notification: ${err}`))
+    }
+  }).catch(err => debugLog(`failed to restore session channel: ${err}`))
 })
 
 client.login(TOKEN).catch(err => {
