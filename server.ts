@@ -59,24 +59,50 @@ if (!TOKEN) {
   process.exit(1)
 }
 const INBOX_DIR = join(STATE_DIR, 'inbox')
-const SESSION_CHANNEL_FILE = join(STATE_DIR, 'session_channel_id')
+const SESSION_ID_FILE = join(STATE_DIR, 'session_id')
+const SESSION_CHANNELS_FILE = join(STATE_DIR, 'session_channels.json')
 
 // Session channel — auto-created in the guild when DISCORD_GUILD_ID is set.
 // null until the gateway connects and restoreSessionChannel()/ensureSessionChannel() resolves.
 let sessionChannelId: string | null = null
 
-function loadPersistedChannelId(): string | null {
+// --- session_id: identifies the current MCP server session ---
+
+function getSessionId(): string {
   try {
-    const id = readFileSync(SESSION_CHANNEL_FILE, 'utf8').trim()
-    return id || null
+    return readFileSync(SESSION_ID_FILE, 'utf8').trim()
   } catch {
-    return null
+    const id = randomBytes(4).toString('hex')
+    mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
+    writeFileSync(SESSION_ID_FILE, id, { mode: 0o600 })
+    return id
   }
+}
+
+const SESSION_ID = getSessionId()
+
+// --- session_channels.json: maps session_id → channel_id ---
+
+type SessionChannels = Record<string, string>
+
+function loadSessionChannels(): SessionChannels {
+  try {
+    return JSON.parse(readFileSync(SESSION_CHANNELS_FILE, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+
+function loadPersistedChannelId(): string | null {
+  const map = loadSessionChannels()
+  return map[SESSION_ID] ?? null
 }
 
 function persistChannelId(channelId: string): void {
   mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
-  writeFileSync(SESSION_CHANNEL_FILE, channelId, { mode: 0o600 })
+  const map = loadSessionChannels()
+  map[SESSION_ID] = channelId
+  writeFileSync(SESSION_CHANNELS_FILE, JSON.stringify(map, null, 2) + '\n', { mode: 0o600 })
 }
 
 /** Derive channel name suggestions from the project directory. */

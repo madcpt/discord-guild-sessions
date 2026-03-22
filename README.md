@@ -88,12 +88,15 @@ DISCORD_SESSION_CHANNEL_NAME=my-claude-bot
 ## How session channels work
 
 1. On gateway connect, the bot checks for `DISCORD_GUILD_ID`
-2. If `DISCORD_SESSION_CHANNEL_NAME` is set, it creates/reuses that channel immediately
-3. Otherwise, it prompts Claude to ask the user to pick a name via `setup_session_channel`
-4. The session channel is auto-registered in access groups (`requireMention: false`)
-5. All messages outside the session channel are dropped
+2. It looks up the current session ID in `session_channels.json` — if a channel ID is found and still exists on Discord, it reconnects
+3. If no persisted channel, and `DISCORD_SESSION_CHANNEL_NAME` is set, it creates/reuses that channel by name
+4. Otherwise, it prompts Claude to ask the user to pick a name via `setup_session_channel`
+5. The channel ID is saved to `session_channels.json` keyed by session ID
+6. All messages outside the session channel are dropped
 
-Session IDs persist in `~/.claude/channels/discord/session_id` and survive restarts.
+**State files** (all under `~/.claude/channels/discord/`):
+- `session_id` — random identifier for the current session, generated on first run. Delete this file to start a new session (new channel).
+- `session_channels.json` — maps session IDs to Discord channel IDs. Multiple sessions can coexist.
 
 ## Access control
 
