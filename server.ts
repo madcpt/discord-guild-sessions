@@ -60,10 +60,27 @@ if (!TOKEN) {
 }
 const INBOX_DIR = join(STATE_DIR, 'inbox')
 const SESSION_CHANNELS_FILE = join(STATE_DIR, 'session_channels.json')
+const ACTIVE_CHANNEL_FILE = join(STATE_DIR, 'active_channel')
 
 // Session channel — auto-created in the guild when DISCORD_GUILD_ID is set.
-// null until the gateway connects and restoreSessionChannel()/ensureSessionChannel() resolves.
+// null until the gateway connects and ensureSessionChannel() resolves.
 let sessionChannelId: string | null = null
+
+// --- active_channel: persists the current channel name across restarts ---
+
+function loadActiveChannelName(): string | null {
+  try {
+    const name = readFileSync(ACTIVE_CHANNEL_FILE, 'utf8').trim()
+    return name || null
+  } catch {
+    return null
+  }
+}
+
+function persistActiveChannelName(name: string): void {
+  mkdirSync(STATE_DIR, { recursive: true, mode: 0o700 })
+  writeFileSync(ACTIVE_CHANNEL_FILE, name, { mode: 0o600 })
+}
 
 // --- session_channels.json: maps channel_name → channel_id ---
 
@@ -87,6 +104,7 @@ function persistChannel(name: string, channelId: string): void {
   const map = loadSessionChannels()
   map[name] = channelId
   writeFileSync(SESSION_CHANNELS_FILE, JSON.stringify(map, null, 2) + '\n', { mode: 0o600 })
+  persistActiveChannelName(name)
 }
 
 /** Derive channel name suggestions from the project directory. */
@@ -919,14 +937,15 @@ client.once('ready', c => {
     debugLog(`no DISCORD_GUILD_ID set, skipping session channel`)
     return
   }
-  if (SESSION_CHANNEL_NAME) {
-    // Explicit name configured — create/reuse via cache or Discord API.
-    debugLog(`ensuring session channel "${SESSION_CHANNEL_NAME}"...`)
-    ensureSessionChannel(SESSION_CHANNEL_NAME)
+  // Resolve channel name: env var > persisted active channel > interactive prompt
+  const channelName = SESSION_CHANNEL_NAME ?? loadActiveChannelName()
+  if (channelName) {
+    debugLog(`ensuring session channel "${channelName}"...`)
+    ensureSessionChannel(channelName)
       .then(id => debugLog(`session channel result: ${id}`))
       .catch(err => debugLog(`failed to create session channel: ${err}`))
   } else {
-    // No explicit name — ask the user to pick one.
+    // No name known — ask the user to pick one.
     needsSessionChannelSetup = true
     const names = suggestChannelNames()
     debugLog(`session channel setup pending — waiting for setup_session_channel tool call`)

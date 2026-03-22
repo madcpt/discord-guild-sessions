@@ -94,7 +94,8 @@ DISCORD_SESSION_CHANNEL_NAME=my-claude-bot
 5. All messages outside the session channel are dropped
 
 **State files** (all under `~/.claude/channels/discord/`):
-- `session_channels.json` — maps channel names to Discord channel IDs. Multiple sessions can coexist with different channel names.
+- `active_channel` — the current channel name, so the server reconnects on restart
+- `session_channels.json` — maps channel names to Discord channel IDs, used as a cache to avoid redundant API calls
 
 ## Access control
 
