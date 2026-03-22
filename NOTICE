@@ -1,0 +1,14 @@
+Discord Guild Sessions
+Copyright 2026 madcpt
+
+This project is a derivative work based on the Discord plugin from
+claude-plugins-official, Copyright 2026 Anthropic, PBC.
+https://github.com/anthropics/claude-plugins-official/tree/main/external_plugins/discord
+
+Licensed under the Apache License, Version 2.0.
+
+Changes from the original:
+- Added guild session channel management (auto-create/reuse dedicated channels)
+- Added setup_session_channel MCP tool
+- Added channel name suggestions based on project directory
+- Added persistent session IDs
