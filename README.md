@@ -13,16 +13,27 @@ When `DISCORD_GUILD_ID` is set, the bot auto-creates (or reuses) a text channel 
 
 Everything else (access control, pairing, DMs, reactions, attachments) works the same as the official plugin.
 
-## Prerequisites
+## Installation
 
-- [Bun](https://bun.sh) — install with `curl -fsSL https://bun.sh/install | bash`
-
-## Quick Setup
+```
+/plugin install discord-guild-sessions
+```
 
 > **Note:** If you have the official `discord` plugin installed, uninstall it first to avoid conflicts:
 > ```
 > /plugin uninstall discord@claude-plugins-official
 > ```
+
+Or test locally without marketplace:
+```sh
+claude --plugin-dir ./discord-guild-sessions
+```
+
+## Prerequisites
+
+- [Bun](https://bun.sh) — install with `curl -fsSL https://bun.sh/install | bash`
+
+## Quick Setup
 
 **1. Create a Discord bot** at the [Developer Portal](https://discord.com/developers/applications). Enable **Message Content Intent** under Bot settings.
 
