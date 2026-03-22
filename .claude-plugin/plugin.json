@@ -1,0 +1,16 @@
+{
+  "name": "discord-guild-sessions",
+  "description": "Discord plugin with guild session channels — auto-creates a dedicated text channel per Claude Code session, scoping all communication to it. Based on the official Discord plugin with added session management.",
+  "version": "0.1.0",
+  "author": "madcpt",
+  "repository": "https://github.com/madcpt/discord-guild-sessions",
+  "license": "Apache-2.0",
+  "keywords": [
+    "discord",
+    "messaging",
+    "channel",
+    "mcp",
+    "guild",
+    "session"
+  ]
+}
